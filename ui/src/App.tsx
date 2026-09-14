@@ -698,13 +698,15 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
   const onboarded = uiState?.onboardingCompleted ?? false;
   const [demoWelcomeOpen, setDemoWelcomeOpen] = useState(false);
   const openDemoWelcome = useCallback(() => setDemoWelcomeOpen(true), []);
-  const closeDemoWelcome = useCallback(async () => {
+  const closeDemoWelcome = useCallback(async (choice: "explore_demo" | "create_project" | "dismiss") => {
+    const firstClose = tourCompletedRef.current === false;
     const saved = await updateUiStateMutation.mutateAsync({ tourCompleted: true });
+    if (firstClose) captureUiEvent({ name: "demo_welcome_choice", choice });
     setUiState((current) => current && { ...current, tourCompleted: saved.tourCompleted });
     setDemoWelcomeOpen(false);
   }, []);
   const createProjectFromDemoWelcome = useCallback(async () => {
-    await closeDemoWelcome();
+    await closeDemoWelcome("create_project");
     setNewProjectOpen(true);
   }, [closeDemoWelcome]);
 

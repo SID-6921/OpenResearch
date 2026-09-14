@@ -244,6 +244,7 @@ export function NewProjectForm({
       const result = await createMutation.mutateAsync({
         name: name.trim(),
         path: projectPath.trim(),
+        creationMode: mode,
         createFolder: mode !== "folder",
         requireNewFolder: mode === "blank",
         initializeGit: true,
