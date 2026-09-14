@@ -252,6 +252,7 @@ export interface NewProject {
   runCommand?: string;
   paperId?: string;
   cloneUrl?: string;
+  creationMode?: "blank" | "folder" | "paper";
   createFolder?: boolean;
   requireNewFolder?: boolean;
   initializeGit?: boolean;
@@ -1441,6 +1442,7 @@ export type FirstAction =
   | "open_settings";
 
 type UiEvent =
+  | { name: "demo_welcome_choice"; choice: "explore_demo" | "create_project" | "dismiss" }
   | { name: "onboarding_step_viewed"; step: OnboardingStep }
   | { name: "demo_experiment_started"; kind: "curated" | "run"; experiment: string }
   | { name: "project_starter_clicked"; slot: number }

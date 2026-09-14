@@ -1311,6 +1311,7 @@ async fn resolve_paper_api(Query(q): Query<PaperResolveQ>) -> ApiResult {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateProjectReq {
+    creation_mode: Option<crate::telemetry::ProjectCreationMode>,
     name: String,
     path: String,
     run_command: Option<String>,
@@ -1415,7 +1416,7 @@ async fn create_project(
     } else {
         (project, None)
     };
-    crate::telemetry::capture_project_created(true);
+    crate::telemetry::capture_project_created(true, req.creation_mode);
     Ok(Json(json!({
         "project": project_json(&project),
         "githubPublicationError": github_publication_error,
@@ -5011,6 +5012,8 @@ async fn telemetry_settings() -> ApiResult {
 struct UiEventReq {
     name: String,
     #[serde(default)]
+    choice: Option<String>,
+    #[serde(default)]
     step: Option<String>,
     #[serde(default)]
     kind: Option<String>,
@@ -5026,6 +5029,11 @@ struct UiEventReq {
 
 async fn record_ui_event(Json(req): Json<UiEventReq>) -> ApiResult {
     match req.name.as_str() {
+        "demo_welcome_choice" => {
+            if let Some(choice) = req.choice.as_deref() {
+                crate::telemetry::capture_demo_welcome_choice(choice);
+            }
+        }
         "onboarding_step_viewed" => {
             if let Some(step) = req.step.as_deref() {
                 crate::telemetry::capture_onboarding_step_viewed(step);
