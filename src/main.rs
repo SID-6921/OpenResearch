@@ -805,7 +805,10 @@ pub struct PaperArgs {
 #[tokio::main]
 async fn main() {
     #[cfg(windows)]
-    install_panic_reporter();
+    {
+        install_panic_reporter();
+        updates::remove_retired_exes();
+    }
     // Double-clicked as the macOS .app? Enter GUI app mode (Dock icon, dashboard
     // server, browser) instead of parsing CLI args. Also require an empty argv so
     // the bundled binary stays usable as a CLI (`…/MacOS/OpenResearch up`), since

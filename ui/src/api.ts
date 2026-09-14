@@ -801,8 +801,8 @@ export const saveTinkerKey = (key: string) => post<TinkerSettings>("/api/setting
 
 // --- updates ------------------------------------------------------------------
 
-/** How orx was installed. Only `installer` and `app-bundle` update themselves. */
-export type InstallChannel = "installer" | "app-bundle" | "cargo" | "homebrew" | "nix" | "unknown";
+/** How orx was installed. `installer`, `app-bundle` and `portable` update themselves. */
+export type InstallChannel = "installer" | "app-bundle" | "portable" | "cargo" | "homebrew" | "nix" | "unknown";
 
 export interface UpdateStatus {
   current: string;
@@ -820,7 +820,7 @@ export interface UpdateStatus {
    *  land between the install and the restart. */
   installedVersion: string | null;
   restartRequired: boolean;
-  /** Whether this platform supports `restartApp`; pair with `restartRequired`. */
+  /** Whether `restartApp` is honored; always true today, kept for a channel that cannot. */
   canRestart: boolean;
   /** Per-process id: changes when the server has relaunched. */
   instance: string;

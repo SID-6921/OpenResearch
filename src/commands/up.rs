@@ -62,6 +62,8 @@ pub async fn run(args: UpArgs) -> Result<()> {
             DashboardLockMode::Shared
         },
     )?;
+    // Blocks only for a relaunched server, whose predecessor still holds the port.
+    updates::await_replaced_parent();
     let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
         Ok(listener) => listener,
         // A second double-click should reach the running dashboard, not fail on its port.
@@ -5108,12 +5110,6 @@ async fn restart_after_update(State(state): State<AppState>) -> ApiResult {
     let status = tokio::task::spawn_blocking(updates::status)
         .await
         .map_err(|e| ApiError::from(anyhow!("update status task failed: {e}")))?;
-    if !status.can_restart {
-        return Err(ApiError(
-            StatusCode::CONFLICT,
-            "orx cannot restart itself on this platform".into(),
-        ));
-    }
     let Some(version) = status.installed_version else {
         return Err(ApiError(
             StatusCode::CONFLICT,
