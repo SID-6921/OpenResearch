@@ -675,7 +675,6 @@ pub(super) async fn detect(
                 .collect();
             info.authenticated = !connected.is_empty();
             info.agent_ready = !info.models.is_empty();
-            info.auth_method = info.authenticated.then_some("oauth");
             if !info.agent_ready {
                 if info.authenticated {
                     info.agent_note = Some("OpenCode V2 listed no enabled models. Check its model configuration and re-check OpenCode.".into());
