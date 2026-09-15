@@ -111,6 +111,7 @@ import {
   type PromptAnswer,
   type RuntimeInfo,
   type SkillInfo,
+  type StarterPrompt,
 } from "../api";
 import { getLocale } from "../paraglide/runtime.js";
 import { activePath, forkPositions } from "../transcriptTree";
@@ -4078,8 +4079,15 @@ function SessionRow({
 
 // --- panel -------------------------------------------------------------------
 
-// The four starter prompts progress understand → gap → baseline → experiment.
+// The four starter prompts progress starting point → gap → baseline → experiment.
 const STARTER_ICONS = [BookOpen, Search, SquareTerminal, FlaskConical];
+// A blank project has nothing for a model to read, so its prompts are pre-written.
+const blankStarterPrompts = (): StarterPrompt[] => [
+  { title: m.chat_panel_starter_blank_1_title(), prompt: m.chat_panel_starter_blank_1_prompt() },
+  { title: m.chat_panel_starter_blank_2_title(), prompt: m.chat_panel_starter_blank_2_prompt() },
+  { title: m.chat_panel_starter_blank_3_title(), prompt: m.chat_panel_starter_blank_3_prompt() },
+  { title: m.chat_panel_starter_blank_4_title(), prompt: m.chat_panel_starter_blank_4_prompt() },
+];
 // One outline colour per step so the four boxes read as distinct choices.
 const STARTER_TONES = [
   { box: "border-accent-blue/45", icon: "text-accent-blue" },
@@ -5097,7 +5105,9 @@ export function ChatPanel({
     enabled: starterVisible && starterHarness !== null,
     subscribed: starterVisible && starterHarness !== null,
   });
-  const starterPrompts = starterQuery.data?.prompts ?? null;
+  const starterPrompts = starterQuery.data?.blank
+    ? blankStarterPrompts()
+    : (starterQuery.data?.prompts ?? null);
   const starterLoading = starterHarness !== null && starterQuery.isPending;
   // The demo project is the only surface that isn't a user-created project.
   const telemetrySurface: FirstActionSurface =

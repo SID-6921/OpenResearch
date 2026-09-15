@@ -2359,7 +2359,8 @@ struct StarterPromptsQuery {
 
 /// Four starter prompts for the empty chat, written by a model that has read
 /// the project (paper, README, code). Slow on a cache miss — one headless
-/// model call — so the UI shows a placeholder while it waits.
+/// model call — so the UI shows a placeholder while it waits. A blank project
+/// is flagged instead so the UI shows its pre-written prompts.
 async fn project_starter_prompts(
     Path(id): Path<String>,
     Query(q): Query<StarterPromptsQuery>,
@@ -2381,23 +2382,24 @@ async fn project_starter_prompts(
         .filter(|h| local::harness::is_chat_harness(h));
     // Past "getting started" or no chat harness named: nothing to offer
     // (empty), as opposed to a harness that could not answer (null).
-    let prompts = match harness {
-        Some(harness) if experiment_count == 0 => {
-            let locale = q.locale.as_deref().unwrap_or("en");
-            let agent = local::starter::Agent {
-                harness: harness.to_string(),
-                model: q
-                    .model
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|m| !m.is_empty())
-                    .map(String::from),
-            };
-            local::starter::prompts(&project, &agent, locale).await
-        }
-        _ => Some(Vec::new()),
+    let Some(harness) = harness.filter(|_| experiment_count == 0) else {
+        return Ok(Json(json!({ "prompts": [], "blank": false })));
     };
-    Ok(Json(json!({ "prompts": prompts })))
+    let locale = q.locale.as_deref().unwrap_or("en");
+    let agent = local::starter::Agent {
+        harness: harness.to_string(),
+        model: q
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+            .map(String::from),
+    };
+    let (prompts, blank) = match local::starter::prompts(&project, &agent, locale).await {
+        local::starter::Starter::Blank => (Some(Vec::new()), true),
+        local::starter::Starter::Generated(prompts) => (prompts, false),
+    };
+    Ok(Json(json!({ "prompts": prompts, "blank": blank })))
 }
 
 /// Live uncommitted changes in the project's clone (the agent's working
