@@ -204,7 +204,10 @@ impl MigrationJournal {
                 format!("Pre-upgrade backup: {}", path.display())
             }
             Some(path) => format!("Backup captured after V2 upgrade began: {}", path.display()),
-            None => "No backup was needed because the database was empty".to_string(),
+            None if self.source_state == DatabaseState::Empty => {
+                "No backup was needed because the database was empty".to_string()
+            }
+            None => "The backup was removed after successful migration".to_string(),
         };
         format!(
             "{backup}. Migration journal: {}",
@@ -216,12 +219,28 @@ impl MigrationJournal {
 fn read_journal(path: &Path) -> Result<Option<MigrationJournal>> {
     let journal = sidecar(path, ".orx-migration.json");
     match std::fs::read(&journal) {
-        Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes).map_err(|error| {
-            anyhow!(
-                "Could not read OpenCode migration journal {}: {error}",
-                journal.display()
-            )
-        })?)),
+        Ok(bytes) => {
+            let decoded: MigrationJournal = serde_json::from_slice(&bytes).map_err(|error| {
+                anyhow!(
+                    "Could not read OpenCode migration journal {}: {error}",
+                    journal.display()
+                )
+            })?;
+            if let Some(backup) = &decoded.backup {
+                let prefix = sidecar(path, ".orx-backup-");
+                let id = backup.to_str().and_then(|name| {
+                    name.strip_prefix(prefix.file_name()?.to_str()?)?
+                        .strip_suffix(".db")
+                });
+                if id.is_none_or(|id| uuid::Uuid::parse_str(id).is_err()) {
+                    return Err(anyhow!(
+                        "Invalid OpenCode backup filename in {}",
+                        journal.display()
+                    ));
+                }
+            }
+            Ok(Some(decoded))
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(anyhow!(
             "Could not read OpenCode migration journal {}: {error}",
@@ -334,6 +353,11 @@ impl DatabaseLease {
                 }
             }
             return Err(anyhow!("This OpenCode database has begun upgrading to V2. Use OpenCode V2 to continue; downgrading would split its history."));
+        }
+        if major == 2 && !migration {
+            if let Some(mut journal) = journal {
+                cleanup_backup(&path, &mut journal);
+            }
         }
         Ok(Self {
             path,
@@ -478,6 +502,7 @@ impl DatabaseLease {
             .map_err(|error| anyhow!("OpenCode database became busy: {error}"))?;
         self.state = DatabaseState::V2Ready;
         self.migration = false;
+        cleanup_backup(&self.path, &mut journal);
         Ok(())
     }
 
@@ -487,6 +512,24 @@ impl DatabaseLease {
             write_journal(&self.path, &journal)?;
         }
         Ok(())
+    }
+}
+
+fn cleanup_backup(path: &Path, journal: &mut MigrationJournal) {
+    if let Some(backup) = journal.backup_path(path) {
+        for suffix in ["", "-wal", "-shm"] {
+            let file = sidecar(&backup, suffix);
+            if let Err(error) = std::fs::remove_file(&file) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!("warning: OpenCode migration succeeded but backup file {} could not be removed: {error}", file.display());
+                    return;
+                }
+            }
+        }
+        journal.backup = None;
+        if let Err(error) = write_journal(path, journal) {
+            eprintln!("warning: could not record OpenCode backup cleanup: {error}");
+        }
     }
 }
 
@@ -640,10 +683,15 @@ mod tests {
         assert!(error.contains(&backup.display().to_string()));
         assert!(error.contains(".orx-migration.json"));
         assert!(has_session(&path, "history").is_err());
+        assert!(backup.is_file());
         connection
             .execute_batch("INSERT INTO session_v2 SELECT * FROM session;")
             .unwrap();
         resumed.complete_migration().unwrap();
+        assert!(!backup.exists());
+        let journal = read_journal(&path).unwrap().unwrap();
+        assert!(journal.completed);
+        assert!(journal.backup.is_none());
         assert!(!resumed.requires_migration());
         assert!(has_session(&path, "history").unwrap());
         assert!(!has_session(&path, "missing").unwrap());
@@ -660,6 +708,97 @@ mod tests {
         assert!(error.contains("No OpenResearch migration journal or backup is recorded"));
         assert!(error.contains("start a new OpenResearch chat"));
         assert!(!error.contains("Migration journal not found"));
+    }
+
+    #[test]
+    fn completed_migration_resumes_backup_cleanup() {
+        for already_removed in [false, true] {
+            let fixture = Fixture::new();
+            let path = fixture.path();
+            let connection = Connection::open(&path).unwrap();
+            connection.execute_batch(V1).unwrap();
+            let lease = DatabaseLease::acquire(&path, 2).unwrap();
+            let backup = lease
+                .prepare_with_sessions(BTreeSet::new())
+                .unwrap()
+                .unwrap();
+            connection.execute_batch(V2).unwrap();
+            connection
+                .execute_batch(
+                    "INSERT INTO kv VALUES ('migration.v1-v2', '{\"phase\":\"completed\"}');",
+                )
+                .unwrap();
+            let mut journal = read_journal(&path).unwrap().unwrap();
+            journal.completed = true;
+            write_journal(&path, &journal).unwrap();
+            for suffix in ["-wal", "-shm"] {
+                std::fs::write(sidecar(&backup, suffix), []).unwrap();
+            }
+            if already_removed {
+                std::fs::remove_file(&backup).unwrap();
+            }
+            drop(lease);
+            assert!(!DatabaseLease::acquire(&path, 2)
+                .unwrap()
+                .requires_migration());
+            for suffix in ["", "-wal", "-shm"] {
+                assert!(!sidecar(&backup, suffix).exists());
+            }
+            assert!(read_journal(&path).unwrap().unwrap().backup.is_none());
+        }
+    }
+
+    #[test]
+    fn journal_rejects_paths_outside_generated_backup_names() {
+        let fixture = Fixture::new();
+        let path = fixture.path();
+        Connection::open(&path).unwrap().execute_batch(V1).unwrap();
+        let lease = DatabaseLease::acquire(&path, 2).unwrap();
+        let backup = lease
+            .prepare_with_sessions(BTreeSet::new())
+            .unwrap()
+            .unwrap();
+        let mut journal = read_journal(&path).unwrap().unwrap();
+        for invalid in [
+            backup.clone(),
+            PathBuf::from("../other.db"),
+            PathBuf::from("opencode.db"),
+        ] {
+            journal.backup = Some(invalid);
+            write_journal(&path, &journal).unwrap();
+            assert!(read_journal(&path).is_err());
+        }
+        assert!(backup.is_file());
+        assert_eq!(inspect(&path).unwrap(), DatabaseState::V1);
+    }
+
+    #[test]
+    fn backup_cleanup_failure_does_not_block_v2() {
+        let fixture = Fixture::new();
+        let path = fixture.path();
+        let connection = Connection::open(&path).unwrap();
+        connection.execute_batch(V1).unwrap();
+        let mut lease = DatabaseLease::acquire(&path, 2).unwrap();
+        let backup = lease
+            .prepare_with_sessions(BTreeSet::new())
+            .unwrap()
+            .unwrap();
+        connection.execute_batch(V2).unwrap();
+        connection
+            .execute_batch(
+                "INSERT INTO kv VALUES ('migration.v1-v2', '{\"phase\":\"completed\"}');",
+            )
+            .unwrap();
+        std::fs::remove_file(&backup).unwrap();
+        std::fs::create_dir(&backup).unwrap();
+        lease.complete_migration().unwrap();
+        assert!(backup.is_dir());
+        let journal = read_journal(&path).unwrap().unwrap();
+        assert!(journal.completed);
+        assert_eq!(journal.backup_path(lease.path()), Some(backup));
+        assert!(!DatabaseLease::acquire(&path, 2)
+            .unwrap()
+            .requires_migration());
     }
 
     #[test]
