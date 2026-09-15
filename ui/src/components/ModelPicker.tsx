@@ -254,24 +254,25 @@ export function ModelPicker({
   );
 
   const submenuHeader = (title: string) => (
-    <div className="flex shrink-0 items-center border-b border-border-variant">
-      <button
+    <div className="flex shrink-0 items-center border-b border-border-variant px-1 py-1">
+      <IconButton
         ref={submenuHeaderRef}
         type="button"
-        className="model-submenu-header flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent px-2 py-2 text-start text-sm font-medium text-text hover:bg-surface"
+        size="small"
+        className="model-submenu-header"
+        aria-label={m.plan_strip_back()}
         onClick={() => {
           setPage("root");
           setFilter("");
         }}
       >
         <ChevronLeft size={15} />
-        {title}
-      </button>
+      </IconButton>
+      <span className="min-w-0 flex-1 text-sm font-medium text-text">{title}</span>
       {page === "models" && (
         <IconButton
           type="button"
           size="small"
-          className="me-1"
           aria-label={m.settings_page_harnesses()}
           onClick={() => { close(); onOpenSettings(); }}
         >

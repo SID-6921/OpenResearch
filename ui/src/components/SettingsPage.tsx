@@ -1,3 +1,4 @@
+import { cn } from "./ui/cn";
 import { TARGET_LABELS } from "../computeTargets";
 import {
   setScopedQueryData,
@@ -342,7 +343,7 @@ function HarnessesTab() {
               <RefreshCw size={12} className={refreshing ? "animate-[spin_0.9s_linear_infinite]" : ""} /> {m.settings_page_refresh()}
             </Button>
           </div>
-          <div className={KV_CLASS_NAME}>
+          <div className={cn(KV_CLASS_NAME, "[&_.v]:text-sm")}>
             <span className="k">{m.settings_page_binary()}</span>
             <span className="v">{h.binPath ?? m.settings_not_found_on_path()}</span>
             <span className="k">{m.settings_page_version()}</span>

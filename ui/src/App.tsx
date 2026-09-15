@@ -28,6 +28,7 @@ import {
   type TaskWorkspace,
 } from "./workspaceState";
 import { getRememberedGlobalWorkspace, globalWorkspaceWriter } from "./workspacePersistence";
+import { PANEL_MIN_WIDTH, initialPanelWidth, panelMaxWidth } from "./panelLayout";
 import {
   type ExpViewDef,
   sameExpTab,
@@ -82,7 +83,6 @@ import {
   cancelRun,
   DEMO_MAIN_SESSION_ID,
   DEMO_OVERVIEW_ARTIFACT,
-  DEMO_RUN_EXPERIMENT_PROMPT,
   captureUiEvent,
   isDemoProjectId,
   type FirstAction,
@@ -221,31 +221,13 @@ function fileBranchLabel(tab: FileViewDef, baselineBranch?: string): string | un
 
 type ExperimentsView = "tree" | "table";
 
-/** Floating panel sizing: keep both the panel and the chat column usable. */
-const PANEL_MIN_WIDTH = 360;
 const PANEL_MARGIN = 10;
 const WORKSPACE_CARD_MIN_WIDTH = 1448; // 1420px content plus the body’s 14px gutters.
-// Space the rest of the layout needs beside the panel: the 272px rail, the
-// chat column's minimum, and the gutters/margins between the three columns
-// (app-body padding 14×2, rail inner margin 14, end-pane inner margin 14).
-const RAIL_WIDTH = 272;
-const CHAT_MIN_SPACE = 380;
-const LAYOUT_CHROME = RAIL_WIDTH + 14 * 4;
 // Once a drag pushes the panel past its usable max by this much, it snaps to
 // fullscreen — a bit of resistance you have to overcome deliberately.
 const FULLSCREEN_SNAP_SLOP = 80;
 // Inward drag needed before snapping back to the last non-fullscreen width.
 const FULLSCREEN_RESTORE_DRAG = 48;
-
-/** The widest the floating panel can be while leaving the rail + chat usable. */
-function panelMaxWidth(): number {
-  return Math.max(PANEL_MIN_WIDTH, window.innerWidth - LAYOUT_CHROME - CHAT_MIN_SPACE);
-}
-
-function initialPanelWidth(): number {
-  const max = panelMaxWidth();
-  return Math.max(PANEL_MIN_WIDTH, Math.min(760, max, Math.round(window.innerWidth * 0.4)));
-}
 
 function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   const i = list.findIndex((x) => x.id === item.id);
@@ -651,7 +633,7 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
   }, [setContentTabOrder, setPreviewTab]);
   const { ready: workspaceReady, loaded: workspaceLoaded, error: workspaceError, retry: retryWorkspace, capture: captureWorkspace, workspace: workspaceRef } = useProjectWorkspace({
     projectId: uiState && sessions !== null && (destination?.kind !== "task" || !activeSessionId || sessions.includes(activeSessionId)) ? projectId : null, taskKey: activeSessionId ?? "new", location: location.href, pane,
-    isTask: destination?.kind === "task", demoOverview: uiState?.tourCompleted === false, state: rightPaneState,
+    isTask: destination?.kind === "task", firstDemoOpen: uiState?.tourCompleted === false, state: rightPaneState,
     apply: applyWorkspace, getScroll: getFileScroll,
     sourceModes: sourceModesRef.current, revision: metadataRevision,
   });
@@ -697,6 +679,8 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
   }, [location.href, uiState, workspaceReady, railOpen, panelWidth, view]);
   const onboarded = uiState?.onboardingCompleted ?? false;
   const [demoWelcomeOpen, setDemoWelcomeOpen] = useState(false);
+  const [demoRunningRunId, setDemoRunningRunId] = useState<string | null>(null);
+  const [composerFocusNonce, setComposerFocusNonce] = useState(0);
   const openDemoWelcome = useCallback(() => setDemoWelcomeOpen(true), []);
   const closeDemoWelcome = useCallback(async (choice: "explore_demo" | "create_project" | "dismiss") => {
     const firstClose = tourCompletedRef.current === false;
@@ -704,6 +688,7 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
     if (firstClose) captureUiEvent({ name: "demo_welcome_choice", choice });
     setUiState((current) => current && { ...current, tourCompleted: saved.tourCompleted });
     setDemoWelcomeOpen(false);
+    if (choice === "explore_demo") setComposerFocusNonce((n) => n + 1);
   }, []);
   const createProjectFromDemoWelcome = useCallback(async () => {
     await closeDemoWelcome("create_project");
@@ -841,6 +826,13 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
         }
         runsBaselineReadyRef.current = true;
         setRunDataReady(true);
+        if (isDemoProjectId(baselineProjectId)) {
+          setDemoRunningRunId((current) =>
+            loadedRuns.some((run) => run.id === current && run.status === "running")
+              ? current
+              : loadedRuns.find((run) => run.status === "running")?.id ?? null,
+          );
+        }
         if (shouldAutoOpen) openExperimentsTab(true);
       })
       .catch(() => {
@@ -887,6 +879,12 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
       if (previous && previous.updatedAt > run.updatedAt) return;
       observedRunsRef.current.set(run.id, run);
       liveRunIdsRef.current.add(run.id);
+      if (isDemoProjectId(run.projectId)) {
+        setDemoRunningRunId((current) => {
+          if (run.status === "running") return current ?? run.id;
+          return current === run.id ? null : current;
+        });
+      }
       if (run.status !== "running" || previous?.status === "running") return;
       const baselineRun = baselineRunsRef.current.get(run.id);
       const newSinceBaseline =
@@ -1586,13 +1584,8 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
             experimentName={experimentName}
             onOpenPlan={openPlanTab}
             onOpenSubagent={openSubagentTab}
-            composerPrefill={
-              activeProject &&
-                isDemoProjectId(activeProject.id) &&
-                uiState?.tourCompleted === false
-                ? DEMO_RUN_EXPERIMENT_PROMPT
-                : null
-            }
+            composerFocusNonce={composerFocusNonce}
+            demoRunningRunId={demoRunningRunId}
             runtime={runtime}
             onOpenDemoWelcome={
               activeProject && isDemoProjectId(activeProject.id) ? openDemoWelcome : undefined

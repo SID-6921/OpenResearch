@@ -51,6 +51,7 @@ import {
   Search,
   SlidersHorizontal,
   SquareTerminal,
+  Terminal,
   ToggleRight,
   TriangleAlert,
   Users,
@@ -79,6 +80,8 @@ import {
   captureUiEvent,
   DEMO_EXPERIMENT_LABELS,
   DEMO_PROJECT_ID,
+  DEMO_RUN_EXPERIMENT_PROMPT,
+  DEMO_SEEDED_LEAF_IDS,
   forkChatTurn,
   fmtNumber,
   createRemoteSession,
@@ -4222,7 +4225,8 @@ export function ChatPanel({
   onOpenSubagent,
   runtime,
   onOpenDemoWelcome,
-  composerPrefill = null,
+  composerFocusNonce = 0,
+  demoRunningRunId = null,
   activeSessionId,
   onActiveSessionChange,
   preferredAgent,
@@ -4278,7 +4282,10 @@ export function ChatPanel({
   runtime: RuntimeInfo;
   /** Reopen the demo welcome modal from the chat header. */
   onOpenDemoWelcome?: () => void;
-  composerPrefill?: string | null;
+  /** Increments when the demo welcome hands focus to the composer. */
+  composerFocusNonce?: number;
+  /** Demo run currently executing, for the monitor-it hint above the composer. */
+  demoRunningRunId?: string | null;
   activeSessionId: string | null;
   onActiveSessionChange: (sessionId: string | null, options?: { replace?: boolean }) => void;
   /** Database-backed selection used to seed new chat sessions. */
@@ -4319,6 +4326,8 @@ export function ChatPanel({
   const [unreadSessionIds, setUnreadSessionIds] = useState<ReadonlySet<string>>(new Set());
   const [sessionFilter, setSessionFilter] = useState<SessionFilter>("active");
   const [draft, setDraft] = useState("");
+  const [demoHintDismissed, setDemoHintDismissed] = useState(false);
+  const [demoRunHintDismissed, setDemoRunHintDismissed] = useState(false);
   const [annotations, setAnnotations] = useState<ComposerAnnotation[]>([]);
   const annotationId = useRef(0);
   const composerScopeRef = useRef({ projectId, activeId, mainView });
@@ -4793,6 +4802,8 @@ export function ChatPanel({
         : new Set(),
     );
     setDraft("");
+    setDemoHintDismissed(false);
+    setDemoRunHintDismissed(false);
     setAttachments([]);
     setTitleReveals(new Map());
     seenTitles.current = new Map();
@@ -5102,14 +5113,36 @@ export function ChatPanel({
       setComposerCursor(prompt.length);
     });
   };
-  // Seeds the draft while a prefill is offered without taking focus, which may
-  // belong to the demo welcome dialog; clearing the prefill later leaves the draft.
+  // On offer until the user has sent anything in the demo: a send either adds
+  // a session or moves a recorded session's leaf off its seeded message.
+  const composerPrefill =
+    projectId === DEMO_PROJECT_ID &&
+      sessions.length > 0 &&
+      sessions.every((session) => DEMO_SEEDED_LEAF_IDS[session.id] === session.activeLeafId)
+      ? DEMO_RUN_EXPERIMENT_PROMPT
+      : null;
+  // Seeds without taking focus; focus may still belong to the welcome dialog.
   useEffect(() => {
     if (!composerPrefill) return;
-    setDraft(composerPrefill);
+    setDraft((current) => current || composerPrefill);
     setSkillMenuDismissed(false);
     setComposerCursor(composerPrefill.length);
   }, [composerPrefill]);
+  useEffect(() => {
+    if (composerFocusNonce === 0) return;
+    // The welcome dialog restores its previous focus on unmount; run after that.
+    const frame = window.requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      el.scrollIntoView({ block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [composerFocusNonce]);
+  const demoHintId = useId();
+  const demoHintVisible =
+    projectId === DEMO_PROJECT_ID && draft === DEMO_RUN_EXPERIMENT_PROMPT && !demoHintDismissed;
   const updateTranscriptBottom = useCallback((el: HTMLDivElement) => {
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
     stickToBottom.current = atBottom;
@@ -6213,6 +6246,59 @@ export function ChatPanel({
               ))}
             </div>
           )}
+          {demoHintVisible && (
+            <div
+              id={demoHintId}
+              role="note"
+              className={`composer-demo-hint ${COMPOSER_HINT_CLASS}`}
+            >
+              <FlaskConical size={16} className="shrink-0 text-primary" />
+              <span className="flex-1" dir="auto">{m.chat_panel_demo_hint_body()}</span>
+              <IconButton
+                size="small"
+                aria-label={m.chat_panel_dismiss_demo_hint()}
+                title={m.chat_panel_dismiss_demo_hint()}
+                onClick={() => {
+                  setDemoHintDismissed(true);
+                  composerRef.current?.focus();
+                }}
+              >
+                <X size={14} />
+              </IconButton>
+            </div>
+          )}
+          {demoRunningRunId && !demoRunHintDismissed && onOpenRun && (
+            <div
+              role="note"
+              className={`composer-demo-run-hint ${COMPOSER_HINT_CLASS}`}
+            >
+              <FlaskConical size={16} className="shrink-0 text-primary" />
+              <span className="flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-1" dir="auto">
+                <span>{m.chat_panel_demo_run_hint_before()}</span>
+                <Button size="small" onClick={() => onOpenRun(demoRunningRunId, "keepOpen")}>
+                  <Terminal size={14} />
+                  {m.experiments_table_logs()}
+                </Button>
+                <span>{m.chat_panel_demo_run_hint_after()}</span>
+              </span>
+              <IconButton
+                size="small"
+                aria-label={m.chat_panel_dismiss_demo_hint()}
+                title={m.chat_panel_dismiss_demo_hint()}
+                onClick={() => {
+                  setDemoRunHintDismissed(true);
+                  composerRef.current?.focus();
+                }}
+              >
+                <X size={14} />
+              </IconButton>
+            </div>
+          )}
+          <span className="sr-only" role="status" aria-live="polite">
+            {demoRunningRunId
+              ? `${m.chat_panel_demo_run_hint_before()} ${m.experiments_table_logs()} ${m.chat_panel_demo_run_hint_after()}`
+              : ""}
+          </span>
           <div className={`composer-box relative flex flex-col border ${bashActive ? "border-accent-amber" : "border-border"} rounded-lg bg-background shadow-elevated`} data-onboarding="composer">
             {activeHarness && !activeHarness.agentReady && (
               <div className="composer-harness-warning py-2 px-3 text-subtext text-sm leading-normal border-b border-b-border-variant [&_strong]:text-accent-amber [&_strong]:font-medium [&_code]:font-mono [&_code]:text-text">
@@ -6282,6 +6368,7 @@ export function ChatPanel({
               <textarea
                 dir="auto"
                 ref={composerRef}
+                aria-describedby={demoHintVisible ? demoHintId : undefined}
                 // Native prose stays visible; the aligned mirror paints only skill tokens.
                 className="relative z-1 bg-transparent"
                 value={draft}
@@ -6492,7 +6579,7 @@ export function ChatPanel({
                 </IconButton>
               ) : (
                 <IconButton
-                  className="send-btn"
+                  className={`send-btn ${demoHintVisible && activeHarness?.agentReady ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
                   variant="primary"
                   title={bashActive ? m.chat_panel_run() : m.chat_panel_send()}
                   aria-label={bashActive ? m.chat_panel_run() : m.chat_panel_send()}
@@ -6515,6 +6602,8 @@ export function ChatPanel({
   );
 }
 
+const COMPOSER_HINT_CLASS =
+  "flex items-center gap-2.5 mb-2.5 py-2 ps-3.5 pe-2 rounded-lg border border-border bg-surface text-text text-sm leading-normal";
 const EMPTY_SKILLS: SkillInfo[] = [];
 
 const EMPTY_HARNESSES: Harness[] = [];

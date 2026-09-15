@@ -18,7 +18,7 @@ function load(name, dependencies) {
   }, exports, { addEventListener() {}, removeEventListener() {} });
   return exports;
 }
-const demo = { DEMO_MAIN_SESSION_ID: "demo-main", DEMO_FIGURE_SESSION_ID: "demo-figures", DEMO_LITERATURE_SESSION_ID: "demo-literature", DEMO_OVERVIEW_ARTIFACT: "overview.md" };
+const demo = { DEMO_MAIN_SESSION_ID: "demo-main", DEMO_FIGURE_SESSION_ID: "demo-figures", DEMO_LITERATURE_SESSION_ID: "demo-literature" };
 const tabs = load("workspaceTabs", { "./api": demo });
 const clean = (value) => JSON.parse(JSON.stringify(value));
 const deferred = () => {
@@ -60,7 +60,7 @@ function host(api) {
   const hook = load("useProjectWorkspace", { react, "./api": { ...api, isDemoProjectId: () => false }, "./workspaceState": workspace, "./workspaceTabs": tabs });
   const readiness = [];
   let state = tabs.initialRightPaneSessionState();
-  let props = { projectId: "p", taskKey: "one", isTask: true, demoOverview: false, location: "/projects/p/tasks/one", pane: undefined, sourceModes: {}, revision: 0 };
+  let props = { projectId: "p", taskKey: "one", isTask: true, firstDemoOpen: false, location: "/projects/p/tasks/one", pane: undefined, sourceModes: {}, revision: 0 };
   const scroll = {};
   const getScroll = () => scroll;
   const apply = (next, saved, restored) => {
