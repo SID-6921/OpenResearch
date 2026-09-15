@@ -6250,7 +6250,7 @@ export function ChatPanel({
             <div
               id={demoHintId}
               role="note"
-              className="composer-demo-hint flex items-center gap-2.5 mb-2.5 py-2 ps-3.5 pe-2 rounded-lg border border-border bg-surface text-text text-sm leading-normal"
+              className={`composer-demo-hint ${COMPOSER_HINT_CLASS}`}
             >
               <FlaskConical size={16} className="shrink-0 text-primary" />
               <span className="flex-1" dir="auto">{m.chat_panel_demo_hint_body()}</span>
@@ -6270,16 +6270,12 @@ export function ChatPanel({
           {demoRunningRunId && !demoRunHintDismissed && onOpenRun && (
             <div
               role="note"
-              className="composer-demo-run-hint flex items-center gap-2.5 mb-2.5 py-2 ps-3.5 pe-2 rounded-lg border border-border bg-surface text-text text-sm leading-normal"
+              className={`composer-demo-run-hint ${COMPOSER_HINT_CLASS}`}
             >
               <FlaskConical size={16} className="shrink-0 text-primary" />
               <span className="flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-1" dir="auto">
                 <span>{m.chat_panel_demo_run_hint_before()}</span>
-                <Button
-                  size="small"
-                  title={m.chat_panel_demo_run_hint_open_logs()}
-                  onClick={() => onOpenRun(demoRunningRunId, "keepOpen")}
-                >
+                <Button size="small" onClick={() => onOpenRun(demoRunningRunId, "keepOpen")}>
                   <Terminal size={14} />
                   {m.experiments_table_logs()}
                 </Button>
@@ -6289,12 +6285,20 @@ export function ChatPanel({
                 size="small"
                 aria-label={m.chat_panel_dismiss_demo_hint()}
                 title={m.chat_panel_dismiss_demo_hint()}
-                onClick={() => setDemoRunHintDismissed(true)}
+                onClick={() => {
+                  setDemoRunHintDismissed(true);
+                  composerRef.current?.focus();
+                }}
               >
                 <X size={14} />
               </IconButton>
             </div>
           )}
+          <span className="sr-only" role="status" aria-live="polite">
+            {demoRunningRunId
+              ? `${m.chat_panel_demo_run_hint_before()} ${m.experiments_table_logs()} ${m.chat_panel_demo_run_hint_after()}`
+              : ""}
+          </span>
           <div className={`composer-box relative flex flex-col border ${bashActive ? "border-accent-amber" : "border-border"} rounded-lg bg-background shadow-elevated`} data-onboarding="composer">
             {activeHarness && !activeHarness.agentReady && (
               <div className="composer-harness-warning py-2 px-3 text-subtext text-sm leading-normal border-b border-b-border-variant [&_strong]:text-accent-amber [&_strong]:font-medium [&_code]:font-mono [&_code]:text-text">
@@ -6597,6 +6601,8 @@ export function ChatPanel({
   );
 }
 
+const COMPOSER_HINT_CLASS =
+  "flex items-center gap-2.5 mb-2.5 py-2 ps-3.5 pe-2 rounded-lg border border-border bg-surface text-text text-sm leading-normal";
 const EMPTY_SKILLS: SkillInfo[] = [];
 
 const EMPTY_HARNESSES: Harness[] = [];

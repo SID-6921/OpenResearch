@@ -72,7 +72,6 @@
   "chat_panel_demo_hint_body": "这条提示会在你的机器上运行一个小型 200 步训练探测。按 Enter 开始。",
   "chat_panel_demo_run_hint_after": "以查看进度。",
   "chat_panel_demo_run_hint_before": "实验正在运行。点按",
-  "chat_panel_demo_run_hint_open_logs": "打开运行日志",
   "chat_panel_deny": "拒绝",
   "chat_panel_dismiss_demo_hint": "关闭",
   "chat_panel_edit_and_re_send": "编辑并重新发送",

@@ -826,6 +826,13 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
         }
         runsBaselineReadyRef.current = true;
         setRunDataReady(true);
+        if (isDemoProjectId(baselineProjectId)) {
+          setDemoRunningRunId((current) =>
+            loadedRuns.some((run) => run.id === current && run.status === "running")
+              ? current
+              : loadedRuns.find((run) => run.status === "running")?.id ?? null,
+          );
+        }
         if (shouldAutoOpen) openExperimentsTab(true);
       })
       .catch(() => {
@@ -873,9 +880,10 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
       observedRunsRef.current.set(run.id, run);
       liveRunIdsRef.current.add(run.id);
       if (isDemoProjectId(run.projectId)) {
-        setDemoRunningRunId((current) =>
-          run.status === "running" ? current ?? run.id : current === run.id ? null : current,
-        );
+        setDemoRunningRunId((current) => {
+          if (run.status === "running") return current ?? run.id;
+          return current === run.id ? null : current;
+        });
       }
       if (run.status !== "running" || previous?.status === "running") return;
       const baselineRun = baselineRunsRef.current.get(run.id);

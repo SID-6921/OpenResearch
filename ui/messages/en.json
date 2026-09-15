@@ -72,7 +72,6 @@
   "chat_panel_demo_hint_body": "This prompt runs a small 200-step training probe on your machine. Hit enter to get started.",
   "chat_panel_demo_run_hint_after": "to monitor it.",
   "chat_panel_demo_run_hint_before": "The experiment is now running. Tap",
-  "chat_panel_demo_run_hint_open_logs": "Open run logs",
   "chat_panel_deny": "Deny",
   "chat_panel_dismiss_demo_hint": "Dismiss",
   "chat_panel_edit_and_re_send": "Edit and re-send",
