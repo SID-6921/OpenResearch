@@ -679,6 +679,7 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
   }, [location.href, uiState, workspaceReady, railOpen, panelWidth, view]);
   const onboarded = uiState?.onboardingCompleted ?? false;
   const [demoWelcomeOpen, setDemoWelcomeOpen] = useState(false);
+  const [demoRunningRunId, setDemoRunningRunId] = useState<string | null>(null);
   const [composerFocusNonce, setComposerFocusNonce] = useState(0);
   const openDemoWelcome = useCallback(() => setDemoWelcomeOpen(true), []);
   const closeDemoWelcome = useCallback(async (choice: "explore_demo" | "create_project" | "dismiss") => {
@@ -871,6 +872,11 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
       if (previous && previous.updatedAt > run.updatedAt) return;
       observedRunsRef.current.set(run.id, run);
       liveRunIdsRef.current.add(run.id);
+      if (isDemoProjectId(run.projectId)) {
+        setDemoRunningRunId((current) =>
+          run.status === "running" ? current ?? run.id : current === run.id ? null : current,
+        );
+      }
       if (run.status !== "running" || previous?.status === "running") return;
       const baselineRun = baselineRunsRef.current.get(run.id);
       const newSinceBaseline =
@@ -1571,6 +1577,7 @@ export default function App({ runtime, projectId, pane }: { runtime: RuntimeInfo
             onOpenPlan={openPlanTab}
             onOpenSubagent={openSubagentTab}
             composerFocusNonce={composerFocusNonce}
+            demoRunningRunId={demoRunningRunId}
             runtime={runtime}
             onOpenDemoWelcome={
               activeProject && isDemoProjectId(activeProject.id) ? openDemoWelcome : undefined

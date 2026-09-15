@@ -51,6 +51,7 @@ import {
   Search,
   SlidersHorizontal,
   SquareTerminal,
+  Terminal,
   ToggleRight,
   TriangleAlert,
   Users,
@@ -4225,6 +4226,7 @@ export function ChatPanel({
   runtime,
   onOpenDemoWelcome,
   composerFocusNonce = 0,
+  demoRunningRunId = null,
   activeSessionId,
   onActiveSessionChange,
   preferredAgent,
@@ -4282,6 +4284,8 @@ export function ChatPanel({
   onOpenDemoWelcome?: () => void;
   /** Increments when the demo welcome hands focus to the composer. */
   composerFocusNonce?: number;
+  /** Demo run currently executing, for the monitor-it hint above the composer. */
+  demoRunningRunId?: string | null;
   activeSessionId: string | null;
   onActiveSessionChange: (sessionId: string | null, options?: { replace?: boolean }) => void;
   /** Database-backed selection used to seed new chat sessions. */
@@ -4323,6 +4327,7 @@ export function ChatPanel({
   const [sessionFilter, setSessionFilter] = useState<SessionFilter>("active");
   const [draft, setDraft] = useState("");
   const [demoHintDismissed, setDemoHintDismissed] = useState(false);
+  const [demoRunHintDismissed, setDemoRunHintDismissed] = useState(false);
   const [annotations, setAnnotations] = useState<ComposerAnnotation[]>([]);
   const annotationId = useRef(0);
   const composerScopeRef = useRef({ projectId, activeId, mainView });
@@ -4798,6 +4803,7 @@ export function ChatPanel({
     );
     setDraft("");
     setDemoHintDismissed(false);
+    setDemoRunHintDismissed(false);
     setAttachments([]);
     setTitleReveals(new Map());
     seenTitles.current = new Map();
@@ -6244,9 +6250,9 @@ export function ChatPanel({
             <div
               id={demoHintId}
               role="note"
-              className="composer-demo-hint flex items-center gap-2.5 mb-2.5 py-2 ps-3.5 pe-2 rounded-lg bg-accent-green-subtle text-text text-sm leading-normal"
+              className="composer-demo-hint flex items-center gap-2.5 mb-2.5 py-2 ps-3.5 pe-2 rounded-lg border border-border bg-surface text-text text-sm leading-normal"
             >
-              <FlaskConical size={16} className="shrink-0 text-accent-green" />
+              <FlaskConical size={16} className="shrink-0 text-primary" />
               <span className="flex-1" dir="auto">{m.chat_panel_demo_hint_body()}</span>
               <IconButton
                 size="small"
@@ -6256,6 +6262,34 @@ export function ChatPanel({
                   setDemoHintDismissed(true);
                   composerRef.current?.focus();
                 }}
+              >
+                <X size={14} />
+              </IconButton>
+            </div>
+          )}
+          {demoRunningRunId && !demoRunHintDismissed && onOpenRun && (
+            <div
+              role="note"
+              className="composer-demo-run-hint flex items-center gap-2.5 mb-2.5 py-2 ps-3.5 pe-2 rounded-lg border border-border bg-surface text-text text-sm leading-normal"
+            >
+              <FlaskConical size={16} className="shrink-0 text-primary" />
+              <span className="flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-1" dir="auto">
+                <span>{m.chat_panel_demo_run_hint_before()}</span>
+                <Button
+                  size="small"
+                  title={m.chat_panel_demo_run_hint_open_logs()}
+                  onClick={() => onOpenRun(demoRunningRunId, "keepOpen")}
+                >
+                  <Terminal size={14} />
+                  {m.experiments_table_logs()}
+                </Button>
+                <span>{m.chat_panel_demo_run_hint_after()}</span>
+              </span>
+              <IconButton
+                size="small"
+                aria-label={m.chat_panel_dismiss_demo_hint()}
+                title={m.chat_panel_dismiss_demo_hint()}
+                onClick={() => setDemoRunHintDismissed(true)}
               >
                 <X size={14} />
               </IconButton>
