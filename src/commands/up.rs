@@ -2359,7 +2359,8 @@ struct StarterPromptsQuery {
 
 /// Four starter prompts for the empty chat, written by a model that has read
 /// the project (paper, README, code). Slow on a cache miss — one headless
-/// model call — so the UI shows a placeholder while it waits.
+/// model call — so the UI shows a placeholder while it waits. A blank project
+/// is flagged instead so the UI shows its pre-written prompts.
 async fn project_starter_prompts(
     Path(id): Path<String>,
     Query(q): Query<StarterPromptsQuery>,
@@ -2381,23 +2382,24 @@ async fn project_starter_prompts(
         .filter(|h| local::harness::is_chat_harness(h));
     // Past "getting started" or no chat harness named: nothing to offer
     // (empty), as opposed to a harness that could not answer (null).
-    let prompts = match harness {
-        Some(harness) if experiment_count == 0 => {
-            let locale = q.locale.as_deref().unwrap_or("en");
-            let agent = local::starter::Agent {
-                harness: harness.to_string(),
-                model: q
-                    .model
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|m| !m.is_empty())
-                    .map(String::from),
-            };
-            local::starter::prompts(&project, &agent, locale).await
-        }
-        _ => Some(Vec::new()),
+    let Some(harness) = harness.filter(|_| experiment_count == 0) else {
+        return Ok(Json(json!({ "prompts": [], "blank": false })));
     };
-    Ok(Json(json!({ "prompts": prompts })))
+    let locale = q.locale.as_deref().unwrap_or("en");
+    let agent = local::starter::Agent {
+        harness: harness.to_string(),
+        model: q
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+            .map(String::from),
+    };
+    let (prompts, blank) = match local::starter::prompts(&project, &agent, locale).await {
+        local::starter::Starter::Blank => (Some(Vec::new()), true),
+        local::starter::Starter::Generated(prompts) => (prompts, false),
+    };
+    Ok(Json(json!({ "prompts": prompts, "blank": blank })))
 }
 
 /// Live uncommitted changes in the project's clone (the agent's working
@@ -5923,8 +5925,14 @@ async fn ssh_master_status(Query(req): Query<SshPreflightReq>) -> ApiResult {
     if host.is_empty() {
         return Err(bad_request("host is required"));
     }
-    let running =
-        crate::jobs::ssh::master_is_running(&crate::jobs::ssh::SshTarget::alias(host)).await?;
+    // A missing master is meaningful only on platforms that support multiplexing.
+    // Windows opens a new SSH connection for each command; reporting false here
+    // makes a successful preflight immediately look disconnected in the dashboard.
+    let running = if cfg!(unix) {
+        Some(crate::jobs::ssh::master_is_running(&crate::jobs::ssh::SshTarget::alias(host)).await?)
+    } else {
+        None
+    };
     Ok(Json(json!({ "running": running })))
 }
 
@@ -7865,6 +7873,17 @@ mod tests {
             serde_json::from_str(r#"{"type":"resize","cols":120,"rows":40}"#).unwrap();
         let SshTerminalInput::Resize { cols, rows } = input;
         assert_eq!((cols, rows), (120, 40));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_ssh_master_status_is_not_a_disconnection() {
+        let response = ssh_master_status(Query(SshPreflightReq {
+            host: "unused-host".into(),
+        }))
+        .await
+        .unwrap_or_else(|error| panic!("{}", error.1));
+        assert!(response.0["running"].is_null());
     }
 
     #[test]

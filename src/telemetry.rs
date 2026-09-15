@@ -1040,7 +1040,7 @@ impl TelemetrySession {
 pub(crate) const ONBOARDING_STEPS: [&str; 3] = ["welcome", "environment", "profile"];
 pub(crate) const WELCOME_CHOICES: [&str; 3] = ["explore_demo", "create_project", "dismiss"];
 pub(crate) const DEMO_EXPERIMENT_KINDS: [&str; 2] = ["curated", "run"];
-/// Starter prompts are model-generated, so only the slot position is stable.
+/// Starter prompts are usually model-generated, so only the slot position is stable.
 /// The upper bound is headroom — the UI renders whatever the model returns.
 pub(crate) const STARTER_SLOTS: std::ops::RangeInclusive<u8> = 1..=8;
 pub(crate) const FIRST_ACTION_SURFACES: [&str; 2] = ["demo", "project"];
