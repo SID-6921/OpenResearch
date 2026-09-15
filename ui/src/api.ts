@@ -24,6 +24,12 @@ export const DEMO_EXPERIMENT_LABELS: Record<string, string> = {
   [DEMO_LITERATURE_SESSION_ID]: "literature",
 };
 export const DEMO_OVERVIEW_ARTIFACT = "cpu-apple-silicon-pipeline-results.md";
+/** Leaf message each recorded demo session is seeded with; a send moves it. */
+export const DEMO_SEEDED_LEAF_IDS: Record<string, string> = {
+  [DEMO_MAIN_SESSION_ID]: "msg_demo_nanochat_assistant_v1",
+  [DEMO_FIGURE_SESSION_ID]: "msg_demo_nanochat_figures_assistant_v1",
+  [DEMO_LITERATURE_SESSION_ID]: "msg_demo_nanochat_literature_assistant_v1",
+};
 export const DEMO_RUN_EXPERIMENT_PROMPT =
   "Run the Muon matrix LR 2× probe experiment. When it finishes, compare its step-100 and step-200 val_bpb against the baseline and tell me whether doubling the matrix learning rate helps early training.";
 
@@ -1835,6 +1841,7 @@ export interface ChatSession {
   createdAt: number;
   updatedAt: number;
   busy: boolean;
+  activeLeafId: string | null;
   contextUsage?: ContextUsage;
 }
 

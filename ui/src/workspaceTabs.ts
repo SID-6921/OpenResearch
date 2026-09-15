@@ -1,7 +1,7 @@
 import type { ExperimentView } from "./components/DetailDrawer";
 import type { CodeView } from "./components/CodeTab";
 import type { WorktreeView } from "./components/WorktreeTab";
-import { DEMO_MAIN_SESSION_ID, DEMO_FIGURE_SESSION_ID, DEMO_LITERATURE_SESSION_ID, DEMO_OVERVIEW_ARTIFACT } from "./api";
+import { DEMO_MAIN_SESSION_ID, DEMO_FIGURE_SESSION_ID, DEMO_LITERATURE_SESSION_ID } from "./api";
 import type { Pane, TaskWorkspace } from "./workspaceState";
 
 export function tabPane(tab: RightTab, runId?: string | null): Pane {
@@ -240,7 +240,7 @@ export interface RightPaneSessionState {
 
 export function initialRightPaneSessionState(
   sessionId?: string,
-  openDemoOverview = false,
+  firstDemoOpen = false,
 ): RightPaneSessionState {
   const initial: RightPaneSessionState = {
     rightTab: "experiments",
@@ -263,21 +263,15 @@ export function initialRightPaneSessionState(
     panelMax: false,
     treeViewport: null,
   };
-  if (sessionId === DEMO_MAIN_SESSION_ID && openDemoOverview) {
-    const demoOverviewTab: FileViewDef = {
-      path: DEMO_OVERVIEW_ARTIFACT,
-      source: "artifacts",
-    };
-    // First demo open leads with the experiments tab so the idle follow-ups
-    // are visible next to the prefilled prompt that runs one of them.
+  if (sessionId === DEMO_MAIN_SESSION_ID && firstDemoOpen) {
+    // First demo open shows only the experiments tab so the idle follow-ups
+    // sit next to the prefilled prompt that runs one of them.
     const experimentsTab: RightTab = "experiments";
     return {
       ...initial,
       rightTab: experimentsTab,
-      tabHistory: [demoOverviewTab, experimentsTab],
+      tabHistory: [experimentsTab],
       experimentsTabOpen: true,
-      fileTabs: [demoOverviewTab],
-      contentTabOrder: [rightTabKey(demoOverviewTab)],
       panelOpen: true,
     };
   }
@@ -313,8 +307,8 @@ export function initialRightPaneSessionState(
   return initial;
 }
 
-export function defaultTaskWorkspace(sessionId: string | undefined, openDemoOverview: boolean): TaskWorkspace | undefined {
-  const state = initialRightPaneSessionState(sessionId, openDemoOverview);
+export function defaultTaskWorkspace(sessionId: string | undefined, firstDemoOpen: boolean): TaskWorkspace | undefined {
+  const state = initialRightPaneSessionState(sessionId, firstDemoOpen);
   return state.panelOpen ? rememberWorkspace(state, {}, {}) : undefined;
 }
 
