@@ -6470,6 +6470,7 @@ export function ChatPanel({
                 <ModelPicker
                   value={composerSelection}
                   onSelect={selectModel}
+                  onOpenSettings={() => onSelectMainView("harnesses")}
                   permissionChoices={activeHarness?.agentReady ? (opts?.permissionModes ?? []) : []}
                   defaultPermissionId={opts?.defaultPermissionMode ?? null}
                   onSelectPermission={setPermissionMode}

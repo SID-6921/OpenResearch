@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getHarnessesQuery } from "../queries/settings";
 import { m } from "../paraglide/messages.js";
 import { ltr } from "../i18n";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Lock, Plus, Zap } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Lock, Plus, Settings, Zap } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   fmtNumber,
@@ -21,7 +21,7 @@ import {
 import { renderNote } from "./agentNote";
 import { HarnessLogo } from "./HarnessLogo";
 
-import { MenuItem } from "./ui";
+import { IconButton, MenuItem } from "./ui";
 import { cn } from "./ui/cn";
 
 import { LocalModelSetup } from "./LocalModelSetup";
@@ -104,6 +104,7 @@ export function usePopover(triggerRef?: RefObject<HTMLButtonElement | null>) {
 export function ModelPicker({
   value,
   onSelect,
+  onOpenSettings,
   permissionChoices = [],
   defaultPermissionId,
   onSelectPermission,
@@ -115,6 +116,7 @@ export function ModelPicker({
 }: {
   value: ModelSelection | null;
   onSelect: (value: ModelSelection) => void;
+  onOpenSettings: () => void;
   permissionChoices?: OptionChoice[];
   defaultPermissionId?: string | null;
   onSelectPermission?: (id: string) => void;
@@ -252,18 +254,31 @@ export function ModelPicker({
   );
 
   const submenuHeader = (title: string) => (
-    <button
-      ref={submenuHeaderRef}
-      type="button"
-      className="model-submenu-header flex w-full items-center gap-2 border-0 border-b border-solid border-b-border-variant bg-transparent px-2 py-2 text-start text-sm font-medium text-text hover:bg-surface"
-      onClick={() => {
-        setPage("root");
-        setFilter("");
-      }}
-    >
-      <ChevronLeft size={15} />
-      {title}
-    </button>
+    <div className="flex shrink-0 items-center border-b border-border-variant">
+      <button
+        ref={submenuHeaderRef}
+        type="button"
+        className="model-submenu-header flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent px-2 py-2 text-start text-sm font-medium text-text hover:bg-surface"
+        onClick={() => {
+          setPage("root");
+          setFilter("");
+        }}
+      >
+        <ChevronLeft size={15} />
+        {title}
+      </button>
+      {page === "models" && (
+        <IconButton
+          type="button"
+          size="small"
+          className="me-1"
+          aria-label={m.settings_page_harnesses()}
+          onClick={() => { close(); onOpenSettings(); }}
+        >
+          <Settings size={15} aria-hidden="true" />
+        </IconButton>
+      )}
+    </div>
   );
 
   const choiceList = (
