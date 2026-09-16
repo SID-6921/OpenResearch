@@ -255,7 +255,7 @@ async fn run(
         let pty_size = *size;
         let shell_env = env.clone();
         let session = match tokio::task::spawn_blocking(move || {
-            super::start_pty_with_env(&program, args, &env, pty_size)
+            super::start_pty_with_env(&program, args, &env, pty_size, None)
         })
         .await
         .map_err(|error| error.to_string())

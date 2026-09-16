@@ -539,6 +539,7 @@ fn router(state: AppState, remote_auth: Option<RemoteAuth>) -> Router {
                 .delete(delete_artifact),
         )
         .route("/api/projects/{id}/files/file", get(serve_artifact))
+        .route("/api/projects/{id}/terminal", get(project_terminal))
         .route("/api/events", get(events))
         .route("/api/settings/hf", get(hf_settings).post(set_hf_token))
         .route(
@@ -5499,7 +5500,7 @@ const DEFAULT_PTY_SIZE: PtySize = PtySize {
 };
 
 fn start_pty(program: &str, args: Vec<String>) -> Result<PtySession> {
-    start_pty_with_env(program, args, &[], DEFAULT_PTY_SIZE)
+    start_pty_with_env(program, args, &[], DEFAULT_PTY_SIZE, None)
 }
 
 fn start_pty_with_env(
@@ -5507,6 +5508,7 @@ fn start_pty_with_env(
     args: Vec<String>,
     env: &[(&str, std::ffi::OsString)],
     size: PtySize,
+    cwd: Option<&std::path::Path>,
 ) -> Result<PtySession> {
     use std::io::{Read as _, Write as _};
 
@@ -5522,8 +5524,14 @@ fn start_pty_with_env(
     if std::env::var_os("TERM").is_none() {
         command.env("TERM", "xterm-256color");
     }
+    if let Some(cwd) = cwd {
+        command.cwd(cwd);
+    }
     for (key, value) in env {
         command.env(key, value);
+    }
+    if let Some(cwd) = cwd {
+        command.cwd(cwd);
     }
     let mut child = pair.slave.spawn_command(command)?;
     drop(pair.slave);
@@ -5760,6 +5768,87 @@ async fn relay_pty(
     Some(status)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectTerminalReq {
+    session_id: Option<String>,
+}
+
+async fn project_terminal(
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+    Path(id): Path<String>,
+    Query(req): Query<ProjectTerminalReq>,
+) -> Response {
+    if let Some(rejected) = reject_cross_origin(&headers) {
+        return rejected;
+    }
+    ws.on_upgrade(move |mut socket| async move {
+        let mut size = DEFAULT_PTY_SIZE;
+        let started = tokio::task::spawn_blocking(move || {
+            let root = project_terminal_root(&id, req.session_id.as_deref())?;
+            let (shell, args) = interactive_shell();
+            start_pty_with_env(&shell, args, &[], size, Some(&root))
+        })
+        .await
+        .map_err(anyhow::Error::from)
+        .and_then(|result| result);
+        let session = match started {
+            Ok(session) => session,
+            Err(error) => {
+                send_terminal_error(&mut socket, error).await;
+                return;
+            }
+        };
+        let Some(status) = relay_pty(&mut socket, session, None, &mut size).await else {
+            return;
+        };
+        match status {
+            Ok(status) => {
+                let message = json!({ "type": "exit", "code": status.exit_code() });
+                let _ = socket.send(Message::Text(message.to_string().into())).await;
+            }
+            Err(error) => send_terminal_error(&mut socket, anyhow!(error)).await,
+        }
+    })
+}
+
+/// The session worktree or, without a session, the project clone.
+fn project_terminal_root(project_id: &str, session_id: Option<&str>) -> Result<std::path::PathBuf> {
+    let store = Store::open()?;
+    let project = store
+        .get_local_project(project_id)?
+        .ok_or_else(|| anyhow!("project not found"))?;
+    let session_id = session_id.map(str::trim).filter(|s| !s.is_empty());
+    let root = match session_id {
+        Some(session_id) => {
+            let session = store
+                .get_chat_session(session_id)?
+                .filter(|session| session.project_id == project.id)
+                .ok_or_else(|| anyhow!("chat session not found"))?;
+            session_checkout_root(&store, &project, &session.id)
+        }
+        None => resolve_checkout_root(&store, &project, None).map(|(root, _)| root),
+    };
+    root.map_err(|ApiError(_, message)| anyhow!(message))
+}
+
+/// The worktree the harness will create on its first turn, so a command run
+/// before any message acts on the same checkout the agent sees.
+fn session_checkout_root(
+    store: &Store,
+    project: &local::model::LocalProject,
+    session_id: &str,
+) -> std::result::Result<std::path::PathBuf, ApiError> {
+    match local::git::ensure_session_worktree(project, session_id) {
+        Ok(dir) => Ok(crate::paths::canonicalize(&dir).unwrap_or(dir)),
+        Err(error) => {
+            eprintln!("orx up: session worktree unavailable, using the clone: {error}");
+            resolve_checkout_root(store, project, Some(session_id)).map(|(root, _)| root)
+        }
+    }
+}
+
 async fn openresearch_login(headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
     openresearch_terminal(headers, ws, vec!["login".into()]).await
 }
@@ -5914,7 +6003,8 @@ async fn spawn_pty(
     env: Vec<(&'static str, std::ffi::OsString)>,
     size: PtySize,
 ) -> Result<PtySession> {
-    tokio::task::spawn_blocking(move || start_pty_with_env(&program, args, &env, size)).await?
+    tokio::task::spawn_blocking(move || start_pty_with_env(&program, args, &env, size, None))
+        .await?
 }
 
 async fn send_terminal_error(socket: &mut WebSocket, error: anyhow::Error) {
@@ -7212,15 +7302,7 @@ async fn run_shell_command(
         let project = store
             .get_local_project(&session.project_id)?
             .ok_or_else(|| not_found("project"))?;
-        // The worktree the harness will create on its first turn, so a command
-        // run before any message acts on the same checkout the agent sees.
-        match local::git::ensure_session_worktree(&project, &session.id) {
-            Ok(dir) => Ok(crate::paths::canonicalize(&dir).unwrap_or(dir)),
-            Err(error) => {
-                eprintln!("orx up: session worktree unavailable, using the clone: {error}");
-                resolve_checkout_root(&store, &project, Some(&session_id)).map(|(root, _)| root)
-            }
-        }
+        session_checkout_root(&store, &project, &session.id)
     })
     .await
     .map_err(|e| ApiError::from(anyhow!("shell task failed: {e}")))??;

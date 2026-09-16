@@ -89,6 +89,7 @@ export function mountTerminal(
 
   return {
     terminal,
+    fit: resize,
     dispose() {
       observer.disconnect();
       themeObserver?.disconnect();
