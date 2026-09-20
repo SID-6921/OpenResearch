@@ -41,6 +41,7 @@ use crate::local::chat::{
 use crate::store::Store;
 
 pub(crate) use claude::{question_prompt, should_synthesize_plan, synthesize_resume};
+pub(crate) use detect::unique as unique_bins;
 pub use detect::{HarnessAuthState, HarnessInfo, ModelInfo};
 pub use options::{HarnessOptions, PermissionMode};
 pub use plan_gate::command_is_readonly;
@@ -816,7 +817,7 @@ mod tests {
                 ),
             ]
         );
-        assert_eq!(antigravity.default_permission_mode, Some("default"));
+        assert_eq!(antigravity.default_permission_mode, Some("bypass"));
         assert_eq!(antigravity.plan_activation, Some(PlanActivation::Command));
         assert!(reasoning_ids(&antigravity).is_empty());
         assert!(antigravity.default_reasoning_level.is_none());
