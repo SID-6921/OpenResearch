@@ -13,8 +13,6 @@ import { useChatState } from "../queries/chatStore";
 
 import {
   getHarnessesQuery,
-  getSshHostsQuery,
-  listRemoteSessionsQuery,
   getSkillsQuery,
 } from "../queries/settings";
 import { listChatSessionsQuery, getChatMessagesQuery } from "../queries/chat";
@@ -22,7 +20,6 @@ import { getProjectStarterPromptsQuery } from "../queries/projects";
 import { m } from "../paraglide/messages.js";
 import { autoDir, ltr } from "../i18n";
 import { useLocale } from "../locale";
-import { getThemePreference } from "../theme";
 import {
   ArrowDown,
   ArrowUpRight,
@@ -57,7 +54,6 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { createPortal } from "react-dom";
 import {
   memo,
   useCallback,
@@ -84,7 +80,6 @@ import {
   DEMO_SEEDED_LEAF_IDS,
   forkChatTurn,
   fmtNumber,
-  createRemoteSession,
   interruptChat,
   reasoningFor,
   recoverChatTurn,
@@ -145,14 +140,12 @@ import {
 } from "../orxCommand";
 import { LitSourceLogo, parseOrxLit, paperUrl } from "./LitSourceLogo";
 import { LitSourcesList } from "./LitSourcesPicker";
-import { Md } from "./Md";
+import { ChatImageScope, Md } from "./Md";
 import { PlanStrip } from "./PlanStrip";
 import { SETTINGS_NAV, type SettingsTab } from "./SettingsPage";
 import { SkillMenu } from "./SkillMenu";
 import { ComposerSkillChips, MessageWithChips, skillMarginSpaces } from "./SkillChips";
-import { SshConfigDialog } from "./SshConfigDialog";
-import { RemoteIcon } from "./RemoteIcon";
-import { RemoteStatus } from "./RemoteStatus";
+import { WorkspaceConnection } from "./WorkspaceConnection";
 import {
   defaultSelection,
   HARNESS_LABELS,
@@ -186,8 +179,7 @@ import {
   shouldRecoverLegacyMath,
   tableMarkdown,
 } from "./annotationMarkdown";
-import { Button, IconButton, Input, MenuItem, showAlert, Spinner } from "./ui";
-import { useDialogFocus } from "./useDialogFocus";
+import { Button, IconButton, MenuItem, showAlert, Spinner } from "./ui";
 import { PaperTitle } from "./PaperTitle";
 
 const TOOL_LINE_CLASS_NAME = "tool-line flex-1 min-w-0 line-clamp-2 break-words text-base leading-6";
@@ -4101,124 +4093,6 @@ const STARTER_TONES = [
 const STARTER_GRID_CLASS =
   "mt-7 grid w-full max-w-readable grid-cols-1 gap-3 sm:grid-cols-2";
 
-function RemoteHostDialog({
-  onClose,
-  onConfigureSsh,
-}: {
-  onClose: () => void;
-  onConfigureSsh: () => void;
-}) {
-  const createRemoteSessionMutation = useMutation({ mutationFn: (args: Parameters<typeof createRemoteSession>) => createRemoteSession(...args) });
-
-  const hostsQuery = useQuery(getSshHostsQuery());
-  const sessionsQuery = useQuery(listRemoteSessionsQuery());
-  const hosts = hostsQuery.data ?? null;
-  const sessions = sessionsQuery.data ?? [];
-  const [query, setQuery] = useState("");
-  const loadError = !hosts ? hostsQuery.error?.message ?? sessionsQuery.error?.message ?? null : null;
-  const [openingHost, setOpeningHost] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  useDialogFocus(dialogRef, onClose);
-
-  async function openRemote(host: string) {
-    const remoteWindow = window.open("/remote-launch", "_blank");
-    if (!remoteWindow) {
-      showAlert(m.remote_popup_blocked(), "error");
-      return;
-    }
-    setOpeningHost(host);
-    try {
-      const session = await createRemoteSessionMutation.mutateAsync([host, {
-        theme: getThemePreference(),
-        locale: getLocale(),
-      }]);
-      remoteWindow.location.replace(session.gatewayUrl);
-      onClose();
-    } catch (error) {
-      remoteWindow.close();
-      showAlert(error instanceof Error ? error.message : String(error), "error");
-    } finally {
-      setOpeningHost(null);
-    }
-  }
-
-  const filteredHosts = hosts?.filter((host) =>
-    host.host.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
-  );
-  const sessionByHost = new Map(sessions.map((session) => [session.host, session]));
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-200 flex items-center justify-center bg-modal-backdrop p-5"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div
-        ref={dialogRef}
-        className="relative flex h-[min(42rem,calc(100vh-2.5rem))] w-160 max-w-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="remote-host-dialog-title"
-        tabIndex={-1}
-      >
-        <IconButton className="absolute end-3.5 top-3.5" aria-label={m.remote_dialog_close()} onClick={onClose}>
-          <X size={16} />
-        </IconButton>
-        <div className="shrink-0 px-6 pt-5 pb-4 pe-14">
-          <h2 id="remote-host-dialog-title" className="m-0 text-xl font-medium">{m.remote_dialog_title()}</h2>
-          <p className="mt-2 mb-0 text-sm leading-normal text-subtext">{m.remote_dialog_description()}</p>
-          <Input
-            data-initial-focus
-            className="mt-4"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={m.remote_search_hosts()}
-            aria-label={m.remote_search_hosts()}
-          />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto border-t border-border-variant p-2">
-          {loadError ? (
-            <p className="m-3 text-sm text-accent-red">{loadError}</p>
-          ) : hosts === null ? (
-            <div className="flex items-center gap-2 p-3 text-sm text-subtext"><Spinner /> {m.settings_page_reading_ssh_config()}</div>
-          ) : filteredHosts?.length === 0 ? (
-            <p className="m-3 text-sm text-subtext">{m.remote_no_matching_hosts()}</p>
-          ) : (
-            filteredHosts?.map((host) => {
-              const session = sessionByHost.get(host.host);
-              return (
-                <Button
-                  key={host.host}
-                  variant="ghost"
-                  className="w-full justify-start text-base font-normal"
-                  disabled={openingHost === host.host}
-                  onClick={() => void openRemote(host.host)}
-                >
-                  <span className="min-w-0 flex-1 truncate text-start">{host.host}</span>
-                  {openingHost === host.host ? (
-                    <Spinner />
-                  ) : session ? (
-                    <span className="text-sm text-subtext">{m.remote_open()}</span>
-                  ) : null}
-                </Button>
-              );
-            })
-          )}
-        </div>
-        <div className="shrink-0 border-t border-border-variant p-2">
-          <Button variant="ghost" className="w-full justify-start text-base font-normal" onClick={onConfigureSsh}>
-            <SlidersHorizontal size={15} />
-            {m.ssh_configure_hosts()}
-          </Button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
 export function ChatPanel({
   projectId,
   projectName,
@@ -4327,8 +4201,6 @@ export function ChatPanel({
       return next;
     });
   }, [sessionsOptions]);
-  const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
-  const [sshConfigOpen, setSshConfigOpen] = useState(false);
   const activeId = activeSessionId;
   const onActiveSessionChangeRef = useRef(onActiveSessionChange);
   onActiveSessionChangeRef.current = onActiveSessionChange;
@@ -5916,38 +5788,7 @@ export function ChatPanel({
           </div>
         )}
       </div>
-      {runtime.kind === "ssh" ? (
-        <RemoteStatus runtime={runtime} />
-      ) : (
-        <div className="relative shrink-0 border-t border-border">
-          <div className="flex items-center gap-1.5 py-2 ps-1 pe-2.5">
-            <IconButton size="small" aria-label={m.remote_dialog_title()} aria-haspopup="dialog" onClick={() => setRemoteDialogOpen(true)}>
-              <RemoteIcon size={14} className="shrink-0" />
-            </IconButton>
-            <span className="flex min-w-0 flex-col gap-1 text-start text-text">
-              <span className="truncate text-sm leading-tight">{m.projects_local()}</span>
-              <span className="truncate text-xs leading-tight text-subtext">OpenResearch {ltr(runtime.version)}</span>
-            </span>
-          </div>
-        </div>
-      )}
-      {remoteDialogOpen && (
-        <RemoteHostDialog
-          onClose={() => setRemoteDialogOpen(false)}
-          onConfigureSsh={() => {
-            setRemoteDialogOpen(false);
-            setSshConfigOpen(true);
-          }}
-        />
-      )}
-      {sshConfigOpen && (
-        <SshConfigDialog
-          onClose={() => {
-            setSshConfigOpen(false);
-            setRemoteDialogOpen(true);
-          }}
-        />
-      )}
+      <WorkspaceConnection runtime={runtime} />
     </aside>
   );
 
@@ -6094,31 +5935,33 @@ export function ChatPanel({
             }}
           >
             <div className="chat-thread-inner max-w-readable my-0 mx-auto pt-4 px-4 pb-8 flex flex-col gap-4" ref={threadInnerRef}>
-              <Transcript
-                key={activeId}
-                scrollRef={threadRef}
-                scrollToEndRef={scrollToEndRef}
-                stickToBottom={stickToBottom}
-                onPinToBottom={pinTranscriptToBottom}
-                messages={messages}
-                allMessages={allMessages}
-                canFork={canFork}
-                onFork={forkTurn}
-                onSelectFork={selectBranch}
-                busy={busy}
-                onOpenFile={openFileInSession}
-                onOpenRun={onOpenRun}
-                onOpenSpawnedSession={openSpawnedSession}
-                runExperimentName={runExperimentName}
-                onOpenExperiment={onOpenExperiment}
-                experimentName={experimentName}
-                onRespond={respond}
-                onOpenPlan={openPlan}
-                onOpenSubagent={openSubagent}
-                recoveringTurnId={recoveringTurnId}
-                onRecover={recoverFailedTurn}
-                skills={commands}
-              />
+              <ChatImageScope projectId={projectId} sessionId={activeId}>
+                <Transcript
+                  key={activeId}
+                  scrollRef={threadRef}
+                  scrollToEndRef={scrollToEndRef}
+                  stickToBottom={stickToBottom}
+                  onPinToBottom={pinTranscriptToBottom}
+                  messages={messages}
+                  allMessages={allMessages}
+                  canFork={canFork}
+                  onFork={forkTurn}
+                  onSelectFork={selectBranch}
+                  busy={busy}
+                  onOpenFile={openFileInSession}
+                  onOpenRun={onOpenRun}
+                  onOpenSpawnedSession={openSpawnedSession}
+                  runExperimentName={runExperimentName}
+                  onOpenExperiment={onOpenExperiment}
+                  experimentName={experimentName}
+                  onRespond={respond}
+                  onOpenPlan={openPlan}
+                  onOpenSubagent={openSubagent}
+                  recoveringTurnId={recoveringTurnId}
+                  onRecover={recoverFailedTurn}
+                  skills={commands}
+                />
+              </ChatImageScope>
               {busy && awaitingInput && (
                 <div className="flex items-center gap-2 text-subtext text-sm pt-0.5 px-0 pb-2 italic">{m.chat_panel_waiting_for_your_input()}</div>
               )}
