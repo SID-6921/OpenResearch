@@ -4500,6 +4500,7 @@ export function ChatPanel({
   const composerModel =
     rawSelection &&
       activeHarness &&
+      !activeHarness.catalogPending &&
       activeHarness.models.length > 0 &&
       !activeHarness.models.some((model) => model.id === rawSelection.model)
       ? activeHarness.models[0].id
@@ -6207,8 +6208,14 @@ export function ChatPanel({
           <div className={`composer-box relative flex flex-col border ${bashActive ? "border-accent-amber" : "border-border"} rounded-lg bg-background shadow-elevated`} data-onboarding="composer">
             {activeHarness && !activeHarness.agentReady && (
               <div className="composer-harness-warning py-2 px-3 text-subtext text-sm leading-normal border-b border-b-border-variant [&_strong]:text-accent-amber [&_strong]:font-medium [&_code]:font-mono [&_code]:text-text">
-                <strong>{activeHarness.name} {m.chat_panel_is_unavailable()}</strong>{" "}
-                {activeHarness.agentNote ? renderNote(activeHarness.agentNote) : m.chat_recheck_setup()}
+                {activeHarness.catalogPending ? (
+                  <span>{activeHarness.name} — {m.onboarding_checking()}</span>
+                ) : (
+                  <>
+                    <strong>{activeHarness.name} {m.chat_panel_is_unavailable()}</strong>{" "}
+                    {activeHarness.agentNote ? renderNote(activeHarness.agentNote) : m.chat_recheck_setup()}
+                  </>
+                )}
               </div>
             )}
             {skillMenuOpen && (
